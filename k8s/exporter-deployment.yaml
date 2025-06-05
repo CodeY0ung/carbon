@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-exporter
+  template:
+    metadata:
+      labels:
+        app: carbon-exporter
+    spec:
+      containers:
+      - name: carbon-exporter
+        image: carbon-exporter:latest
+        ports:
+        - containerPort: 8000

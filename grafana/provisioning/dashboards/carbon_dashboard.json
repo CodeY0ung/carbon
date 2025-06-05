@@ -1,0 +1,65 @@
+{
+  "id": null,
+  "title": "Carbon Scheduler Dashboard",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "gauge",
+      "title": "Carbon Saving (%)",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "carbon_saving_percent"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "max": 100,
+          "min": 0
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Jobs Processed",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "carbon_job_count"
+        }
+      ],
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Late Jobs",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "late_job_count"
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      }
+    }
+  ],
+  "schemaVersion": 27,
+  "version": 1,
+  "refresh": "10s"
+}

@@ -1,0 +1,7 @@
+server:
+  global:
+    scrape_interval: 10s
+  extraScrapeConfigs:
+    - job_name: 'carbon-exporter'
+      static_configs:
+        - targets: ['carbon-exporter:8000']
