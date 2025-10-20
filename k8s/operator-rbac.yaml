@@ -1,0 +1,58 @@
+# RBAC for Carbon-Aware Scheduling Operator
+# Provides minimal permissions needed for the operator to function
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: carbon-operator
+  namespace: carbon-poc
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: carbon-operator-role
+rules:
+  # Kopf framework requirements
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["list", "watch"]
+
+  # Pod permissions
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+
+  # Job permissions
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+
+  # Kopf peering (for multi-instance coordination)
+  - apiGroups: ["kopf.dev"]
+    resources: ["clusterkopfpeerings"]
+    verbs: ["get", "list", "watch", "patch", "update", "create"]
+
+  # Read nodes (optional, for node label validation)
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: carbon-operator-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: carbon-operator-role
+subjects:
+  - kind: ServiceAccount
+    name: carbon-operator
+    namespace: carbon-poc

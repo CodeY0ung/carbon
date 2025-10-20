@@ -1,0 +1,268 @@
+# Carbon-Aware Scheduling - Kubernetes Manifests
+# Compatible with kind/minikube
+# Apply with: kubectl apply -f k8s/all-in-one.yaml
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: carbon-poc
+  labels:
+    name: carbon-poc
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: electricitymap-secret
+  namespace: carbon-poc
+type: Opaque
+stringData:
+  api-key: "ebGFEg4L68pWwe68DdVu"  # Replace with your API key
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: carbon-poc
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: 'fastapi-carbon'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - carbon-poc
+        relabel_configs:
+          # Only scrape pods with prometheus.io/scrape annotation
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          # Use the port from prometheus.io/port annotation
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+          # Use the path from prometheus.io/path annotation
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-deployment
+  namespace: carbon-poc
+  labels:
+    app: fastapi-carbon
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fastapi-carbon
+  template:
+    metadata:
+      labels:
+        app: fastapi-carbon
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: fastapi
+        image: yourregistry/fastapi-carbon:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: ELECTRICITYMAP_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: electricitymap-secret
+              key: api-key
+        - name: CARBON_ZONE
+          value: "US-CA"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-service
+  namespace: carbon-poc
+  labels:
+    app: fastapi-carbon
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: fastapi-carbon
+
+---
+# Optional: Prometheus Deployment (if not using existing Prometheus)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: carbon-poc
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:latest
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+        ports:
+        - containerPort: 9090
+          name: web
+        volumeMounts:
+        - name: prometheus-config
+          mountPath: /etc/prometheus
+        - name: prometheus-storage
+          mountPath: /prometheus
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
+      - name: prometheus-storage
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: carbon-poc
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: web
+  selector:
+    app: prometheus
+
+---
+# Optional: Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: carbon-poc
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+          name: web
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: "admin"
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin"
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: "false"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+      volumes:
+      - name: grafana-storage
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: carbon-poc
+  labels:
+    app: grafana
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: web
+  selector:
+    app: grafana

@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-workload-kr
+  namespace: carbon-workloads
+  labels:
+    app: carbon-workload
+    region: KR
+    managed-by: manual-test
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: carbon-workload
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: workload
+        image: busybox
+        command: ["sh", "-c"]
+        args:
+          - |
+            echo "🇰🇷 Running workload in KOREA cluster"
+            echo "Carbon intensity: LOW (450 gCO2/kWh)"
+            echo "Simulating CPU-intensive task..."
+            i=0
+            while [ $i -lt 30 ]; do
+              echo "Processing... $i/30"
+              sleep 1
+              i=$((i+1))
+            done
+            echo "✅ Workload completed successfully in Korea!"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"

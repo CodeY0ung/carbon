@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-workload-cn
+  namespace: carbon-workloads
+  labels:
+    app: carbon-workload
+    region: CN
+    managed-by: manual-test
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: carbon-workload
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: workload
+        image: busybox
+        command: ["sh", "-c"]
+        args:
+          - |
+            echo "🇨🇳 Running workload in CHINA cluster"
+            echo "Carbon intensity: HIGH (580 gCO2/kWh)"
+            echo "Executing batch processing..."
+            sleep 15
+            echo "✅ Workload completed in China!"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"

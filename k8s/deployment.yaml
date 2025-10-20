@@ -1,0 +1,88 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: carbon-scheduler
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: electricitymap-secret
+  namespace: carbon-scheduler
+type: Opaque
+stringData:
+  api-key: "placeholder_api_key"  # Replace with actual API key
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-api
+  namespace: carbon-scheduler
+  labels:
+    app: carbon-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: carbon-api
+  template:
+    metadata:
+      labels:
+        app: carbon-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: api
+        image: carbon-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: ELECTRICITYMAP_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: electricitymap-secret
+              key: api-key
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carbon-api
+  namespace: carbon-scheduler
+  labels:
+    app: carbon-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: carbon-api

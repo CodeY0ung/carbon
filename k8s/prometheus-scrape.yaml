@@ -1,0 +1,37 @@
+---
+# ServiceMonitor for Prometheus Operator
+# If using Prometheus Operator, this will automatically configure scraping
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: carbon-api-monitor
+  namespace: carbon-scheduler
+  labels:
+    app: carbon-api
+spec:
+  selector:
+    matchLabels:
+      app: carbon-api
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+
+---
+# Alternative: PodMonitor for direct pod scraping
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: carbon-api-pod-monitor
+  namespace: carbon-scheduler
+  labels:
+    app: carbon-api
+spec:
+  selector:
+    matchLabels:
+      app: carbon-api
+  podMetricsEndpoints:
+  - port: http
+    path: /metrics
+    interval: 15s

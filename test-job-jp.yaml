@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-workload-jp
+  namespace: carbon-workloads
+  labels:
+    app: carbon-workload
+    region: JP
+    managed-by: manual-test
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: carbon-workload
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: workload
+        image: busybox
+        command: ["sh", "-c"]
+        args:
+          - |
+            echo "🇯🇵 Running workload in JAPAN cluster"
+            echo "Carbon intensity: MEDIUM (520 gCO2/kWh)"
+            echo "Processing data..."
+            sleep 20
+            echo "✅ Workload completed in Japan!"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"

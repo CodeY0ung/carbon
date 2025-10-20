@@ -1,0 +1,51 @@
+# Carbon-Aware Scheduling Operator Deployment
+# Compatible with kind/minikube
+# Apply with: kubectl apply -f k8s/operator-rbac.yaml && kubectl apply -f k8s/operator-deployment.yaml
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-operator
+  namespace: carbon-poc
+  labels:
+    app: carbon-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-operator
+  template:
+    metadata:
+      labels:
+        app: carbon-operator
+    spec:
+      serviceAccountName: carbon-operator
+      containers:
+      - name: operator
+        image: yourregistry/carbon-operator:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: CARBON_API_URL
+          value: "http://fastapi-service.carbon-poc.svc.cluster.local:8000"
+        - name: HIGH_THRESHOLD
+          value: "300"
+        - name: LOW_THRESHOLD
+          value: "150"
+        - name: DRY_RUN
+          value: "false"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 30
