@@ -10,7 +10,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - ELECTRICITYMAP_API_KEY=ebGFEg4L68pWwe68DdVu
+      - ELECTRICITYMAP_API_KEY=your_api_key_here
       - CARBON_ZONES=KR,JP,CN
       - USE_MOCK_DATA=true
       - KUBECONFIG=/app/kubeconfig-docker

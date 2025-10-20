@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     # CarbonClient 초기화
-    api_key = os.getenv("ELECTRICITYMAP_API_KEY", "ebGFEg4L68pWwe68DdVu")
+    api_key = os.getenv("ELECTRICITYMAP_API_KEY", "your_api_key_here")
     zones_str = os.getenv("CARBON_ZONES", "KR,JP,CN")
     zones = [z.strip() for z in zones_str.split(",")]
 

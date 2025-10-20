@@ -13,7 +13,7 @@ echo.
 echo 다음 명령어로 Hub를 시작하세요:
 echo.
 echo   cd c:\Users\USER\Desktop\carbon
-echo   set ELECTRICITYMAP_API_KEY=ebGFEg4L68pWwe68DdVu
+echo   set ELECTRICITYMAP_API_KEY=your_api_key_here
 echo   set CARBON_ZONES=KR,JP,CN
 echo   set USE_MOCK_DATA=true
 echo   python -m uvicorn hub.app:app --host 0.0.0.0 --port 8080

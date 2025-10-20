@@ -55,3 +55,7 @@ kubeconfig
 # Temporary files
 *.tmp
 *.bak
+
+# Claude Code settings (may contain sensitive data)
+.claude/
+kubeconfig-docker

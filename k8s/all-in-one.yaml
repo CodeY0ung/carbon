@@ -18,7 +18,7 @@ metadata:
   namespace: carbon-poc
 type: Opaque
 stringData:
-  api-key: "ebGFEg4L68pWwe68DdVu"  # Replace with your API key
+  api-key: "your_api_key_here"  # Replace with your API key
 
 ---
 apiVersion: v1
