@@ -89,5 +89,37 @@ def setup_metrics():
         'appwrappers_running': appwrappers_running,
         'appwrappers_completed': appwrappers_completed,
         'clusters_total': clusters_total,
-        'clusters_ready': clusters_ready
+        'clusters_ready': clusters_ready,
+        'migrations_total': migrations_total,
+        'migration_data_transferred': migration_data_transferred_gb,
+        'migrations_in_progress': migrations_in_progress,
+        'migration_cost': migration_cost_gco2
     }
+
+# 마이그레이션 메트릭
+migrations_total = Counter(
+    'migrations_total',
+    'Total number of workload migrations',
+    ['from_cluster', 'to_cluster'],
+    registry=metrics_registry
+)
+
+migration_data_transferred_gb = Counter(
+    'migration_data_transferred_gb',
+    'Total data transferred during migrations in GB',
+    ['from_cluster', 'to_cluster'],
+    registry=metrics_registry
+)
+
+migrations_in_progress = Gauge(
+    'migrations_in_progress',
+    'Number of migrations currently in progress',
+    registry=metrics_registry
+)
+
+migration_cost_gco2 = Counter(
+    'migration_cost_gco2',
+    'Total carbon cost of migrations in gCO2',
+    ['from_cluster', 'to_cluster'],
+    registry=metrics_registry
+)

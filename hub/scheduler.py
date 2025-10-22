@@ -17,6 +17,12 @@ from hub.models import (
 from hub.store import hub_store
 from app.schemas import OptimizeInput, JobSpec, ClusterCapacity, CarbonPoint
 from app.optimizer import build_and_solve
+from app.metrics import (
+    migrations_total,
+    migration_data_transferred_gb,
+    migrations_in_progress,
+    migration_cost_gco2
+)
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +271,7 @@ class HubScheduler:
         """
         Step 3: AppWrapper 업데이트
         targetCluster 설정 및 dispatching gate 열기
+        마이그레이션 메트릭 기록
 
         Args:
             decisions: 스케줄링 결정 리스트
@@ -274,6 +281,42 @@ class HubScheduler:
             if not appwrapper:
                 logger.warning(f"AppWrapper {decision.job_id} not found")
                 continue
+
+            # 이전 클러스터 할당 확인 (마이그레이션 감지)
+            previous_cluster = appwrapper.spec.target_cluster
+            new_cluster = decision.target_cluster
+            is_migration = previous_cluster and previous_cluster != new_cluster
+
+            # 마이그레이션 발생 시 메트릭 기록
+            if is_migration:
+                data_gb = appwrapper.spec.data_gb
+                
+                # 마이그레이션 카운트 증가
+                migrations_total.labels(
+                    from_cluster=previous_cluster,
+                    to_cluster=new_cluster
+                ).inc()
+                
+                # 전송 데이터 기록
+                migration_data_transferred_gb.labels(
+                    from_cluster=previous_cluster,
+                    to_cluster=new_cluster
+                ).inc(data_gb)
+                
+                # 마이그레이션 비용 계산 및 기록
+                # lam_dev (100.0) + net_cost * data_gb
+                # 네트워크 비용은 현재 0으로 가정
+                migration_carbon_cost = 100.0  # lam_dev 기본값
+                migration_cost_gco2.labels(
+                    from_cluster=previous_cluster,
+                    to_cluster=new_cluster
+                ).inc(migration_carbon_cost)
+                
+                logger.info(
+                    f"  MIGRATION detected for {decision.job_id}: "
+                    f"{previous_cluster} -> {new_cluster}, "
+                    f"data={data_gb:.2f}GB, cost={migration_carbon_cost:.2f}gCO2"
+                )
 
             # targetCluster 설정
             appwrapper.spec.target_cluster = decision.target_cluster
@@ -286,6 +329,10 @@ class HubScheduler:
             # 메타데이터 업데이트
             appwrapper.metadata["scheduled_at"] = str(time.time())
             appwrapper.metadata["estimated_co2_g"] = str(decision.estimated_co2_g)
+            
+            if is_migration:
+                appwrapper.metadata["migrated_from"] = previous_cluster
+                appwrapper.metadata["migration_time"] = str(time.time())
 
             # 저장
             await hub_store.update_appwrapper(decision.job_id, appwrapper)
