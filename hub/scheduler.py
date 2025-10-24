@@ -96,17 +96,28 @@ class HubScheduler:
         """
         스케줄링 사이클 실행
         원래 설계의 3단계 프로세스
+
+        Pending과 Running 워크로드를 모두 스케줄링하여
+        탄소 강도 변화에 따른 마이그레이션을 지원
         """
         logger.info("=" * 60)
         logger.info("Starting scheduling cycle")
 
-        # Step 0: 대기 중인 AppWrapper 확인
+        # Step 0: Pending + Running AppWrapper 모두 가져오기 (마이그레이션 지원)
         pending_appwrappers = await hub_store.get_pending_appwrappers()
-        if not pending_appwrappers:
-            logger.info("No pending AppWrappers, skipping cycle")
+        running_appwrappers = await hub_store.get_running_appwrappers()
+
+        # Pending과 Running을 합쳐서 재스케줄링
+        all_schedulable = pending_appwrappers + running_appwrappers
+
+        if not all_schedulable:
+            logger.info("No schedulable AppWrappers, skipping cycle")
             return
 
-        logger.info(f"Found {len(pending_appwrappers)} pending AppWrappers")
+        logger.info(
+            f"Found {len(all_schedulable)} schedulable AppWrappers "
+            f"({len(pending_appwrappers)} pending, {len(running_appwrappers)} running)"
+        )
 
         # ===== Step 1: Spoke 클러스터로부터 정보 수집 =====
         cluster_infos = await self._collect_cluster_info()
@@ -122,7 +133,7 @@ class HubScheduler:
             )
 
         # ===== Step 2: CASPIAN Optimizer 호출 =====
-        decisions = await self._call_optimizer(pending_appwrappers, cluster_infos)
+        decisions = await self._call_optimizer(all_schedulable, cluster_infos)
         if not decisions:
             logger.warning("No scheduling decisions from optimizer")
             return
@@ -345,4 +356,4 @@ class HubScheduler:
 
 
 # 전역 싱글톤 인스턴스
-hub_scheduler = HubScheduler()
+hub_scheduler = HubScheduler(schedule_interval=30)  # 30초마다 재스케줄링

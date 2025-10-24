@@ -51,11 +51,16 @@ Thumbs.db
 
 # Kubernetes
 kubeconfig
+kubeconfig-*
 
 # Temporary files
 *.tmp
 *.bak
+*.backup
+*.old
 
 # Claude Code settings (may contain sensitive data)
 .claude/
-kubeconfig-docker
+
+# Question and personal notes
+question.md

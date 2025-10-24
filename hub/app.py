@@ -58,20 +58,32 @@ async def lifespan(app: FastAPI):
     import asyncio
     async def sync_cluster_info():
         """탄소 데이터를 ClusterInfo로 동기화"""
+        logger.info("Carbon sync task started")
         while True:
-            await asyncio.sleep(15)  # 15초마다
-            zones_data = carbon_client.latest_data
-            if zones_data:
-                for zone_name, data in zones_data.items():
-                    if data:
-                        ci = data.get('carbonIntensity')
-                        if ci:
-                            # ClusterInfo 업데이트
-                            cluster_info = await hub_store.get_cluster_info(zone_name)
-                            if cluster_info:
-                                cluster_info.carbon_intensity = ci
-                                cluster_info.last_updated = time.time()
-                                await hub_store.update_cluster_info(cluster_info)
+            try:
+                await asyncio.sleep(15)  # 15초마다
+                zones_data = carbon_client.latest_data
+                if zones_data:
+                    # 모든 클러스터 조회
+                    all_clusters = await hub_store.get_all_cluster_info()
+                    logger.debug(f"Sync: Found {len(all_clusters)} clusters, {len(zones_data)} zones")
+                    for zone_name, data in zones_data.items():
+                        if data:
+                            ci = data.get('carbonIntensity')
+                            if ci:
+                                # geolocation으로 ClusterInfo 찾기
+                                matched = False
+                                for cluster_info in all_clusters:
+                                    if cluster_info.geolocation == zone_name:
+                                        cluster_info.carbon_intensity = ci
+                                        cluster_info.last_updated = time.time()
+                                        await hub_store.update_cluster_info(cluster_info)
+                                        logger.info(f"Synced {cluster_info.name} ({zone_name}): {ci} gCO2/kWh")
+                                        matched = True
+                                if not matched:
+                                    logger.warning(f"No cluster found for zone {zone_name}")
+            except Exception as e:
+                logger.error(f"Error in carbon sync: {e}", exc_info=True)
 
     sync_task = asyncio.create_task(sync_cluster_info())
 
@@ -295,6 +307,20 @@ async def get_metrics():
     metrics['appwrappers_completed'].set(stats['completed'])
     metrics['clusters_total'].set(stats['total_clusters'])
     metrics['clusters_ready'].set(stats['ready_clusters'])
+
+    # 클러스터별 AppWrapper 분포 업데이트
+    all_appwrappers = await hub_store.get_all_appwrappers()
+    cluster_counts = {}
+    for aw in all_appwrappers:
+        cluster = aw.status.cluster
+        if cluster:
+            cluster_counts[cluster] = cluster_counts.get(cluster, 0) + 1
+
+    # 모든 클러스터에 대해 메트릭 설정 (없으면 0)
+    all_clusters = await hub_store.get_all_cluster_info()
+    for cluster_info in all_clusters:
+        count = cluster_counts.get(cluster_info.name, 0)
+        metrics['appwrappers_by_cluster'].labels(cluster=cluster_info.name).set(count)
 
     # 탄소 강도 메트릭 업데이트
     if carbon_client:

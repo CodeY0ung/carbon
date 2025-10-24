@@ -27,8 +27,8 @@ class CarbonClient:
         "BR": {"carbonIntensity": 180, "fossilFreePercentage": 65},  # 브라질 - 수력발전
         "BO": {"carbonIntensity": 450, "fossilFreePercentage": 35},  # 볼리비아
         "CN": {"carbonIntensity": 650, "fossilFreePercentage": 20},  # 중국 - 항상 최악 (높은 탄소)
-        "KR": {"carbonIntensity": 350, "fossilFreePercentage": 45},  # 한국 - 중간, 변동
-        "JP": {"carbonIntensity": 380, "fossilFreePercentage": 40},  # 일본 - 중간, 변동
+        "KR": {"carbonIntensity": 350, "fossilFreePercentage": 45},  # 한국 - 경쟁 1
+        "JP": {"carbonIntensity": 340, "fossilFreePercentage": 48},  # 일본 - 경쟁 2 (KR과 자주 교차)
     }
 
     def __init__(self, api_key: str, poll_interval: int = 30, use_mock: bool = False):
@@ -160,83 +160,128 @@ class CarbonClient:
 
     async def _fetch_mock_data(self, zone: str) -> Optional[Dict]:
         """
-        Generate realistic mock carbon intensity data with time-based patterns.
-
-        Each region has different peak/off-peak patterns to simulate realistic
-        workload migration scenarios where the best region changes over time.
-
+        Generate realistic mock carbon intensity data with irregular patterns.
+        
+        Simulates real-world grid behavior:
+        - Multiple overlapping cycles (daily patterns, weather, demand fluctuations)
+        - Random renewable energy variations (wind/solar intermittency)
+        - Sudden demand spikes and drops
+        - Occasional grid events
+        
+        This creates unpredictable but realistic patterns where the "best" region
+        changes irregularly, triggering realistic migration scenarios.
+        
         Args:
             zone: Zone code
-
+        
         Returns:
             Mock data dictionary with time-varying carbon intensity
         """
         # Simulate network delay
         await asyncio.sleep(random.uniform(0.1, 0.5))
-
+        
         base_data = self.MOCK_DATA.get(zone)
         if not base_data:
-            # Generate random data for unknown zones
             base_data = {
                 "carbonIntensity": random.randint(50, 600),
                 "fossilFreePercentage": random.randint(20, 95)
             }
-
-        # Create time-based patterns that shift the "best" region over time
-        # This simulates realistic grid conditions where different regions
-        # have different peak/off-peak hours
+        
         current_time = time.time()
+        
+        # Base carbon intensity
+        base_intensity = base_data["carbonIntensity"]
+        
+        # === Multi-frequency pattern mixing (irregular behavior) ===
+        
+        # Long cycle: ~10 minutes (simulates daily demand patterns)
+        long_cycle = 600
+        long_wave = math.sin(current_time / long_cycle * 2 * math.pi)
+        
+        # Medium cycle: ~3 minutes (simulates weather/cloud cover changes)
+        med_cycle = 180
+        med_wave = math.sin(current_time / med_cycle * 2 * math.pi)
+        
+        # Short cycle: ~1 minute (simulates rapid demand fluctuations)
+        short_cycle = 60
+        short_wave = math.sin(current_time / short_cycle * 2 * math.pi)
+        
+        # Zone-specific behavior patterns
+        # KR and JP compete closely - frequent crossovers for migration testing
+        if zone == "KR":
+            # Korea: Fast-changing pattern with strong variations
+            # Uses opposite phase for Japan to create frequent crossovers
+            pattern = (long_wave * 100) + (med_wave * 80) + (short_wave * 60)
+            # Frequent renewable surges (30% chance)
+            if random.random() < 0.30:
+                pattern -= random.randint(80, 150)
+            # Occasional demand spikes (20% chance)
+            if random.random() < 0.20:
+                pattern += random.randint(60, 120)
 
-        # Use a faster cycle (5 minutes = 300 seconds) for demo purposes
-        # In production, this would be based on actual time of day
-        cycle_seconds = 300  # 5-minute cycle
-        phase = (current_time % cycle_seconds) / cycle_seconds  # 0.0 to 1.0
-
-        # Each zone has a different sine wave pattern with different phases
-        # This creates realistic scenarios where regions alternate as the best option
-        if zone == "CA":
-            # Canada: Low carbon (renewable hydro), slight variation
-            wave = math.sin(phase * 2 * math.pi)
-            carbon_offset = int(wave * 80)  # ±80 gCO2/kWh variation
-        elif zone == "BR":
-            # Brazil: Medium carbon, 120° phase shift
-            wave = math.sin((phase + 0.33) * 2 * math.pi)
-            carbon_offset = int(wave * 100)
-        elif zone == "BO":
-            # Bolivia: Higher carbon, 240° phase shift
-            wave = math.sin((phase + 0.67) * 2 * math.pi)
-            carbon_offset = int(wave * 150)
-        elif zone == "CN":
-            # China: Always worst - minimal variation (stays high)
-            wave = math.sin(phase * 2 * math.pi)
-            carbon_offset = int(wave * 100)  # ±100 gCO2/kWh - small variation, stays worst
-        elif zone == "KR":
-            # Korea: Moderate fluctuation - competes with JP for 1st/2nd place
-            wave = math.sin(phase * 2 * math.pi)
-            carbon_offset = int(wave * 30)  # ±50 gCO2/kWh variation
         elif zone == "JP":
-            # Japan: Opposite pattern to KR - they alternate for 1st/2nd place
-            wave = math.sin((phase + 0.5) * 2 * math.pi)  # 180° phase shift from KR
-            carbon_offset = int(wave * 70)  # ±95 gCO2/kWh variation
+            # Japan: Inverse pattern to Korea for frequent crossovers
+            # When KR goes up, JP tends to go down and vice versa
+            pattern = (-long_wave * 90) + (-med_wave * 70) + (short_wave * 50)
+            # Frequent solar/wind changes (30% chance)
+            if random.random() < 0.30:
+                pattern -= random.randint(70, 140)
+            # Occasional peaks (20% chance)
+            if random.random() < 0.20:
+                pattern += random.randint(50, 110)
+                
+        elif zone == "CN":
+            # China: High baseline (coal-heavy), less variable but still fluctuates
+            pattern = (long_wave * 40) + (med_wave * 30) + (short_wave * 20)
+            # Consistently high but not completely static
+            
+        elif zone == "CA":
+            # Canada: Low baseline (hydro), very stable
+            pattern = (long_wave * 30) + (med_wave * 20) + (short_wave * 15)
+            # Occasional hydro adjustments (20% chance)
+            if random.random() < 0.20:
+                pattern -= random.randint(10, 30)
+                
+        elif zone == "BR":
+            # Brazil: Medium baseline, depends on hydro reservoir levels
+            pattern = (long_wave * 60) + (med_wave * 40) + (short_wave * 25)
+            # Rain/drought effects (12% chance)
+            if random.random() < 0.12:
+                pattern += random.randint(-40, 60)
+                
+        elif zone == "BO":
+            # Bolivia: Higher carbon, moderate variability
+            pattern = (long_wave * 80) + (med_wave * 50) + (short_wave * 30)
+            
         else:
             # Unknown zone: random pattern
-            wave = math.sin((phase + random.random()) * 2 * math.pi)
-            carbon_offset = int(wave * 100)
-
-        # Add small random noise for realism
-        noise = random.randint(-15, 15)
-
+            pattern = (long_wave * 70) + (med_wave * 50) + (short_wave * 30)
+        
+        # === Add realistic noise and events ===
+        
+        # Continuous random noise (measurement uncertainty, small grid fluctuations)
+        continuous_noise = random.randint(-25, 25)
+        
+        # Rare significant events (5% chance: grid issues, major renewable output changes)
+        event_noise = 0
+        if random.random() < 0.05:
+            event_noise = random.randint(-80, 80)
+            if abs(event_noise) > 50:
+                logger.info(f"Mock {zone}: Significant grid event! Δ{event_noise:+d} gCO2/kWh")
+        
         # Calculate final carbon intensity
-        base_intensity = base_data["carbonIntensity"]
-        final_intensity = max(50, base_intensity + carbon_offset + noise)
-
-        # Log the pattern for debugging (only occasionally to avoid spam)
-        if random.random() < 0.1:  # 10% chance
+        final_intensity = int(base_intensity + pattern + continuous_noise + event_noise)
+        
+        # Ensure realistic bounds (grids don't go below 50 or above 800 gCO2/kWh)
+        final_intensity = max(50, min(800, final_intensity))
+        
+        # Occasional detailed logging for monitoring
+        if random.random() < 0.05:  # 5% chance
             logger.debug(
-                f"Mock {zone}: base={base_intensity}, offset={carbon_offset}, "
-                f"noise={noise}, final={final_intensity}, phase={phase:.2f}"
+                f"Mock {zone}: base={base_intensity}, pattern={int(pattern)}, "
+                f"noise={continuous_noise}, event={event_noise}, final={final_intensity}"
             )
-
+        
         return {
             "zone": zone,
             "carbonIntensity": final_intensity,
@@ -245,9 +290,9 @@ class CarbonClient:
             "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
             "fetchedAt": time.time(),
             "isMock": True,
-            "mockPhase": phase,  # Include for debugging
-            "mockOffset": carbon_offset
+            "mockPattern": "irregular_realistic"
         }
+
 
     async def _poll_loop(self, zone: str):
         """

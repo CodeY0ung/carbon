@@ -93,7 +93,8 @@ def setup_metrics():
         'migrations_total': migrations_total,
         'migration_data_transferred': migration_data_transferred_gb,
         'migrations_in_progress': migrations_in_progress,
-        'migration_cost': migration_cost_gco2
+        'migration_cost': migration_cost_gco2,
+        'appwrappers_by_cluster': appwrappers_by_cluster
     }
 
 # 마이그레이션 메트릭
@@ -121,5 +122,12 @@ migration_cost_gco2 = Counter(
     'migration_cost_gco2',
     'Total carbon cost of migrations in gCO2',
     ['from_cluster', 'to_cluster'],
+    registry=metrics_registry
+)
+
+appwrappers_by_cluster = Gauge(
+    'appwrappers_by_cluster',
+    'Number of AppWrappers per cluster',
+    ['cluster'],
     registry=metrics_registry
 )

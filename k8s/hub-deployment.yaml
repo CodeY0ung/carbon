@@ -1,0 +1,389 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: caspian-hub
+
+---
+# ConfigMap for API Key
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hub-config
+  namespace: caspian-hub
+data:
+  CARBON_ZONES: "KR,JP,CN"
+  USE_MOCK_DATA: "true"
+  SCHEDULER_INTERVAL: "300"
+  DISPATCHER_INTERVAL: "30"
+
+---
+# Secret for API Key (base64 encoded "your_api_key_here")
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hub-secrets
+  namespace: caspian-hub
+type: Opaque
+data:
+  ELECTRICITYMAP_API_KEY: eW91cl9hcGlfa2V5X2hlcmU=  # "your_api_key_here" in base64
+
+---
+# ServiceAccount for Hub
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hub-sa
+  namespace: caspian-hub
+
+---
+# ClusterRole for accessing Spoke clusters
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hub-cluster-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hub-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hub-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: hub-sa
+    namespace: caspian-hub
+
+---
+# Hub API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub-api
+  namespace: caspian-hub
+  labels:
+    app: hub-api
+    component: caspian-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hub-api
+  template:
+    metadata:
+      labels:
+        app: hub-api
+        component: caspian-hub
+    spec:
+      serviceAccountName: hub-sa
+      containers:
+        - name: hub-api
+          image: carbon-hub:latest
+          imagePullPolicy: Never  # Use local image built by Kind
+          command: ["uvicorn", "hub.app:app", "--host", "0.0.0.0", "--port", "8080"]
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: ELECTRICITYMAP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hub-secrets
+                  key: ELECTRICITYMAP_API_KEY
+            - name: CARBON_ZONES
+              valueFrom:
+                configMapKeyRef:
+                  name: hub-config
+                  key: CARBON_ZONES
+            - name: USE_MOCK_DATA
+              valueFrom:
+                configMapKeyRef:
+                  name: hub-config
+                  key: USE_MOCK_DATA
+            - name: SCHEDULER_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: hub-config
+                  key: SCHEDULER_INTERVAL
+            - name: DISPATCHER_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: hub-config
+                  key: DISPATCHER_INTERVAL
+          livenessProbe:
+            httpGet:
+              path: /hub/stats
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /hub/stats
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /root/.kube
+              readOnly: true
+      volumes:
+        - name: kubeconfig
+          configMap:
+            name: spoke-kubeconfig
+            optional: true
+
+---
+# Hub API Service (NodePort for external access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub-api
+  namespace: caspian-hub
+  labels:
+    app: hub-api
+spec:
+  type: NodePort
+  selector:
+    app: hub-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080
+      protocol: TCP
+      name: http
+
+---
+# Prometheus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: caspian-hub
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          ports:
+            - containerPort: 9090
+              name: http
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-storage
+              mountPath: /prometheus
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+        - name: prometheus-storage
+          emptyDir: {}
+
+---
+# Prometheus ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: caspian-hub
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: 'caspian-hub'
+        static_configs:
+          - targets: ['hub-api:8080']
+
+---
+# Prometheus Service (NodePort)
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: caspian-hub
+  labels:
+    app: prometheus
+spec:
+  type: NodePort
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
+      protocol: TCP
+      name: http
+
+---
+# Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: caspian-hub
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Viewer"
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: "false"
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-dashboards-config
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboards
+              mountPath: /etc/grafana/provisioning/dashboards/files
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: grafana-storage
+          emptyDir: {}
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+        - name: grafana-dashboards-config
+          configMap:
+            name: grafana-dashboards-config
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboard-caspian
+
+---
+# Grafana Datasources ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: caspian-hub
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        uid: prometheus
+        isDefault: true
+        editable: false
+
+---
+# Grafana Dashboards Config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-config
+  namespace: caspian-hub
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'CASPIAN'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /etc/grafana/provisioning/dashboards/files
+
+---
+# Grafana Service (NodePort)
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: caspian-hub
+  labels:
+    app: grafana
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30000
+      protocol: TCP
+      name: http

@@ -76,6 +76,18 @@ class HubStore:
 
             return pending
 
+    async def get_running_appwrappers(self) -> List[AppWrapper]:
+        """
+        실행 중인 AppWrapper 조회
+        마이그레이션 대상이 될 수 있는 Running 상태의 워크로드
+        """
+        async with self._lock:
+            running = []
+            for aw in self._appwrappers.values():
+                if aw.status.phase == "Running":
+                    running.append(aw)
+            return running
+
     async def update_appwrapper(self, job_id: str, appwrapper: AppWrapper):
         """AppWrapper 업데이트"""
         async with self._lock:

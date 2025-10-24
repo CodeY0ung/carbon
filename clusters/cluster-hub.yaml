@@ -1,0 +1,31 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: carbon-hub
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "cluster=hub,region=global"
+    extraPortMappings:
+      - containerPort: 30080  # Hub API NodePort
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 30090  # Prometheus NodePort
+        hostPort: 9090
+        protocol: TCP
+      - containerPort: 30000  # Grafana NodePort
+        hostPort: 3000
+        protocol: TCP
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "cluster=hub,region=global"
+networking:
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
